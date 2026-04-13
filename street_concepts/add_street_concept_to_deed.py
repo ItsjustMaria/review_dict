@@ -1,11 +1,15 @@
 ## Import libraries
 import sys
 import os 
+from pathlib import Path
 #dir_path = os.path.dirname(os.path.realpath(__file__))
 import simplejson as json
-from datetime import time
-import time
-sys.path.append(r'../')
+from datetime import time, datetime
+from tqdm import tqdm
+# saa_nexus = Path(__file__).resolve().parents[]/ 'saa-nexus-scripts' 
+# sys.path.append(str(saa_nexus)) #r'../saa-nexus-scripts/modules')
+root = '/opt/lampp/htdocs/saa-nexus-scripts'
+sys.path.insert(0, root)
 from modules import memorix
 from modules import saa
 # from modules import wrapper
@@ -23,10 +27,28 @@ deed = r'templates/deed.ttl' # name your turtle
 concepts = r'./straten.xlsx' # name your file for concept export
 alter = r'./alternatieve_straatnamen.csv'  # name your file for alternative street names
 name = '' #  Early idea, Not in use? 
-turtle = r'./Akte.ttl'
+turtle = r'./deeds.ttl'
 args = memorix_export, concepts, alter
 errors = []
 pattern = r'^(?P<street>.*?)(?:\s+(?P<number>\d+)(?P<add>.*))?$'
+
+######################## DECLARE EXPORT VARIABLES ########################
+current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+logfile = f'logs/street_concepts to deed {str(current_datetime)}.log'
+print (logfile)
+
+
+############################# LOGGER SETUP ###############################
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+    
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.FileHandler(logfile, mode='w')]
+)
+my_log = logging.getLogger()
+
 
 ######################## DECLARE EXPORT VARIABLES ########################
 
@@ -59,10 +81,10 @@ kwrgs = {
 # MN acc = acceptatieomgeving env = echie tst = dry-run from home
 if env == 'acc':
     prefix = 'https://ams-migrate.memorix.io'
-    settings_file = r'../settings.json'
-    #cwd = os.getcwd()  # Get the current working directory (cwd)
-    #files = os.listdir(cwd)  # Get all the files in that directory
-    #print("Files in %r: %s" % (cwd, files))
+    settings_file = r'./settings.json'
+    cwd = os.getcwd()  # Get the current working directory (cwd)
+    files = os.listdir(cwd)  # Get all the files in that directory
+    print("Files in %r: %s" % (cwd, files))
 #elif env == 'prod':
 #    prefix = 'https://stadsarchiefamsterdam.memorix.io'
 #    settings_file = 'settings.prod.json'
@@ -70,6 +92,8 @@ elif env == 'tst':
     print(f'output: {out_file}')
 else:
     raise ValueError("Environment must be 'acc' or 'prod'")
+
+
 
 settings = saa.readJsonFile(f"{settings_file}")
 api = memorix.ApiClient(settings)
@@ -144,7 +168,7 @@ def match_data(pattern, df_streets, **kwrgs):
         return deviates
 
     except:
-        logging.error(f'Data extraction and match error with {df_streets}')
+        my_log.error(f'Data extraction and match error with {df_streets}')
         errors.append({'fn: match_data': df_streets})
         #print(f'We have an error in {df}') ##################   ------------->>> HIER WILLEN WE DE FILENAAM EXTRACTEN
 
@@ -166,8 +190,7 @@ def write_to_files(deviates, df_streets, df_concepts, **kwrgs):
   
         # Map column from merged to basefile
         update_mapping = {
-            #'Deed.saa:isAssociatedWithModernAddress.saa:street' : 'concept_uuid',
-            #'Deed.saa:hasOrHadSubjectLocation' : 'concept_adamlink'
+
             'Deed.saa:isAssociatedWithModernAddress.saa:street' : 'concept_uuid',
             'Deed.saa:hasOrHadSubjectLocation' : 'adamlink'
         }
@@ -186,7 +209,7 @@ def write_to_files(deviates, df_streets, df_concepts, **kwrgs):
         #    (df_streets[streets_col]) = (df_streets[key_streets]).map(lambda x: value_map.get(x, df_streets.loc[(df_streets[key_streets]) == x, streets_col].values[0]))
     
     except:
-        logging.error(f'Data writing error')
+        my_log.error(f'Data writing error')
         errors.append({'fn: write_to_files': {df_streets, df_concepts}})
         #print(f'We have an error in {df}') ##################   ------------->>> HIER WILLEN WE DE FILENAAM EXTRACTEN
 
@@ -240,7 +263,7 @@ def merge_data(df_streets, df_concepts, df_alternatives, **kwrgs):
         return merged
 
     except:
-        logging.error(f'Data merging error')
+        my_log.error(f'Data merging error')
         errors.append({'fn: merge_data': [df_streets, df_concepts, df_alternatives]})
             #print(f'We have an error in {df}') ##################   ------------->>> HIER WILLEN WE DE FILENAAM EXTRACTEN
     # Replace data in merged df_streets[columns] with data from merged df_concepts[columns]
@@ -252,11 +275,8 @@ def output_to_file_and_db(merged, df_streets, deed, **kwrgs):
     ########################### OUTPUT #################################
     # Remove temp columns
     df_streets = df_streets.drop(columns = [kwrgs['extr_str'], kwrgs['extr_nr'], kwrgs['extr_add']])
-    uuid = '0567a504-8ba9-4ab5-9305-f20f7aa57613' 
-    # Write updated record to memorix
 
 
-        
     # Write updated record to csv
     df_streets.to_csv(upload, sep=';', 
     encoding= 'utf-8',
@@ -269,6 +289,22 @@ def output_to_file_and_db(merged, df_streets, deed, **kwrgs):
     df_out.to_csv(out_file, sep=';', 
     encoding= 'utf-8',
     index= False, header= True)
+
+########################################################## LISA SYNTAX #################################################################################
+
+
+
+for index, row in tqdm(df_streets.iterrows()):
+    uuid = row['id']
+    my_log .info(f"START {uuid}")
+    try:
+        response = api.update_record(uuid, turtle)
+        #if response.status_code != 200:
+        #    my_log .error(f"Reading failed for {row.uuid}")
+        #else:
+
+    except:
+        my_log.error(f"FAILED TRANSFORMATION {uuid}")
 
 if __name__ == '__main__':
         deviates = match_data(pattern, df_streets, **kwrgs)
