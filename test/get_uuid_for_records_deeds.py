@@ -19,7 +19,7 @@ env = sys.argv[1]
 
 ######################## DECLARE EXPORT VARIABLES ########################
 current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-logfile = f'logs/get concept streetnames {str(current_datetime)}.log'
+logfile = f'logs/get person observation {str(current_datetime)}.log'
 print (logfile)
 
 
@@ -39,32 +39,39 @@ my_log = logging.getLogger()
 if env == 'acc':
     prefix = 'https://ams-migrate.memorix.io'
     settings_file = r'../settings.json'
-    cwd = os.getcwd()  # Get the current working directory (cwd)
-    files = os.listdir(cwd)  # Get all the files in that directory
-    print("Files in %r: %s" % (cwd, files))
+    #cwd = os.getcwd()  # Get the current working directory (cwd)
+    #files = os.listdir(cwd)  # Get all the files in that directory
+    #print("Files in %r: %s" % (cwd, files))
 elif env == 'prod':
     prefix = 'https://stadsarchiefamsterdam.memorix.io'
-    settings_file = 'settings.prod.json'
+    settings_file = r'../settings.prod.json'
 elif env == 'tst':
     print(f'test output')
 else:
     raise ValueError("Environment must be 'acc' or 'prod'")
 
-settings = saa.readJsonFile('../settings.prod.json') # prod of acc
+settings = saa.readJsonFile(settings_file) # prod of acc
 api = memorix.ApiClient(settings)
 
 # Conceptlijst
 vocabulair = 'a4863c0c-d9e5-3902-831a-d0960e381a41' # straten, of kies andere conceptlijst in Memorix
 
 # Bestandspaden
-turtle_file = "deeds.ttl"       # <-- Zet hier het pad naar jouw Turtle file
+turtle_file = "person_observation.ttl"       # <-- Zet hier het pad naar jouw Turtle file
 excel_file = "test_straten.xlsx"       # <-- Zet hier de gewenste Excel naam
 
-# response = api.list_record_types()
-# response = api.get_record_type( 'Deed')
-response = api.get_record()
-print(response.text,  file=open(turtle_file, 'w', encoding='utf-8'))
-
+try:
+    # response = api.list_record_types()
+    response = api.get_record_type( 'Persoonsvermelding')
+    #response = api.get_record()
+    if response.status_code != 200:
+        my_log(response)
+    elif response.status_code == 401:
+         my_log.error('You need a refresh token')
+    else: 
+        print(response.text,  file=open(turtle_file, 'w', encoding='utf-8'))
+except:
+    my_log.error(f'There is sonething not oke with the connection {response.status_code}')
 
 
 
